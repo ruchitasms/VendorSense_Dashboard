@@ -247,7 +247,7 @@ def run_vendorsense_app():
             ).format({
                 'Contract Value': '${:,.0f}',
                 'Cost Overrun %': '{:.1%}',
-                'Days from Deadline': lambda x: f'{int(x)} days late' if x > 0 else f'{int(abs(x))} days early',
+                'Days from Deadline': lambda x: f'{int(x)} days late' if x < 0 else f'{int(abs(x))} days early',
             }),
             use_container_width=True,
             hide_index=True
@@ -256,7 +256,7 @@ def run_vendorsense_app():
         # --- LINE CHART FOR LATE CONTRACTS ---
         st.subheader("Contracts Behind Schedule (Days Late)")
 
-        # 1. Filter for contracts that are behind schedule (Days from Deadline > 0)
+        # 1. Filter for contracts that are behind schedule (Days from Deadline < 0)
         df_late_contracts = df_contracts[df_contracts['Days from Deadline'] < 0].sort_values(
             by='Days from Deadline', ascending=False
         )
@@ -276,4 +276,3 @@ def run_vendorsense_app():
 # Run the application
 if __name__ == "__main__":
     run_vendorsense_app()
-
