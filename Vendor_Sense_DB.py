@@ -2,44 +2,53 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# --- 1. Data Loading from CSV Files ---
+# --- 1. Data Generation and Initial Setup ---
 
 @st.cache_data
 def load_data():
     """
-    Loads dataframes for Contracts and Vendors directly from the uploaded
-    CSV files that represent the Excel sheets.
+    Creates dummy dataframes for Contracts and Vendors, mimicking the
+    Google Sheets structure provided in the initial project files.
     """
-    # File names derived from the uploaded "VendorSense_Dataset.xlsx" content
-    file = "VendorSense Dataset.xlsx"
+    # Vendor Master Data (Static)
+    vendor_data = {
+        'Vendor ID': ['V001', 'V002', 'V003', 'V004', 'V005'],
+        'Vendor Name': ['EcoFusion Technologies', 'Beacon Health Solutions', 'Dynamized Learning', 'Synergy Research Partners', 'Apex Precision Systems (APS)']
+    }
+    df_vendors = pd.DataFrame(vendor_data)
 
-    try:
-        # Read Contracts Details
-        df_contracts = pd.read_excel(file, sheet_name="Contracts Details")
-        
-        # Read Vendor Master (dropping duplicates for clean lookup)
-        df_vendors = pd.read_excel(file, sheet_name="Vendor Master").drop_duplicates(subset=['Vendor ID'])
-        
-        # Data Cleaning and Type Conversion (Essential after reading from file)
-        # Convert performance metrics to correct numeric types
-        df_contracts['Contract Value'] = pd.to_numeric(df_contracts['Contract Value'], errors='coerce')
-        df_contracts['Cost Overrun %'] = pd.to_numeric(df_contracts['Cost Overrun %'], errors='coerce')
-        df_contracts['Reported Issues Count'] = pd.to_numeric(df_contracts['Reported Issues Count'], errors='coerce').fillna(0).astype(int)
-        df_contracts['Days from Deadline'] = pd.to_numeric(df_contracts['Days from Deadline'], errors='coerce').fillna(0).astype(int)
-
-        return df_contracts, df_vendors
-    except FileNotFoundError:
-        st.error(f"Required data file not found. Please ensure '{file}' is accessible.")
-        return pd.DataFrame(), pd.DataFrame() # Return empty DFs on failure
+    # Contracts Details Data (Operational Records)
+    contract_data = {
+        'Contract ID': ['C001', 'C002', 'C003', 'C004', 'C005', 'C006', 'C007', 'C008', 'C009', 'C010', 'C011', 'C012', 'C013', 'C014', 'C015'],
+        'Contract Name': [
+            'ERP System Implementation - 1', 'Economic Impact Study', 'Electronic Records Upgrade', 'Water Treatment Plant Upgrade',
+            'Staff Augmentation (Audit)', 'Sustainability Training', 'ERP System Implementation - 2', 'Digital Transformation Strategy',
+            'Community Development Impact Study', 'Health Benefit Portal Dev', 'Smart Solar Grid Pilot', 'Facility Management Software',
+            'Cybersecurity Audit', 'HR Policy Consulting', 'Office Supply Contract'
+        ],
+        'Vendor ID': ['V005', 'V004', 'V002', 'V001', 'V004', 'V003', 'V005', 'V005', 'V004', 'V002', 'V001', 'V003', 'V005', 'V002', 'V003'],
+        'Contract Value': [50000, 250000, 1000000, 8000000, 150000, 40000, 50000, 500000, 190000, 340000, 1200000, 75000, 300000, 120000, 15000],
+        'Cost Overrun %': [0.15, 0.05, 0.01, 0.20, 0.02, 0.05, 0.00, 0.08, 0.01, 0.04, 0.00, 0.10, 0.05, 0.03, 0.00], # Decimal
+        'Reported Issues Count': [8, 3, 5, 4, 20, 17, 0, 6, 3, 9, 1, 12, 4, 2, 0],
+        'Days from Deadline': [45, 30, -8, -15, -1, -25, 110, -2, -5, 25, 60, -10, 5, 15, 30], # Positive is late, Negative is early
+        'Project Type': ['IT Infrastructure', 'Policy Making', 'IT Infrastructure', 'Engineering', 'Audit', 'HR L&D', 'IT Infrastructure', 'IT Infrastructure', 'Policy Making', 'IT Infrastructure', 'Engineering', 'IT Infrastructure', 'IT Infrastructure', 'Consulting', 'Administrative'],
+        'Payment Schedule Type': ['Milestone', 'T&M', 'T&M', 'Milestone', 'T&M', 'Fixed Price', 'Milestone', 'T&M', 'Milestone', 'Milestone', 'Fixed Price', 'T&M', 'Fixed Price', 'Fixed Price', 'Fixed Price'],
+        'Mandatory Clause Waiver?': ['No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'No', 'No', 'No', 'No', 'No', 'Yes', 'No', 'No', 'No']
+    }
+    df_contracts = pd.DataFrame(contract_data)
+    
+    # Merge for display purposes
+    df_contracts = df_contracts.merge(df_vendors, on='Vendor ID', how='left')
+    return df_contracts, df_vendors
 
 # --- 2. Low-Code Logic Engine (Computed Columns) ---
-# Note: Deep copy is maintained in these functions for stability.
 
 def apply_risk_logic(df_contracts):
     """
     Applies the custom risk scoring logic to the contracts DataFrame.
-    Creates a deep copy to prevent Streamlit/Pandas cache issues.
+    IMPORTANT: Creates a deep copy to prevent Streamlit/Pandas cache issues.
     """
+    # Create a deep copy to ensure modifications don't interfere with cached objects
     df = df_contracts.copy(deep=True) 
     
     # Initialize the Risk Score column
@@ -54,7 +63,7 @@ def apply_risk_logic(df_contracts):
     df.loc[high_risk_condition, 'Risk Score'] = 'HIGH RISK'
 
     # Rule 2: MEDIUM RISK (Cost Overrun > 5% OR 5-10 Issues OR 10-30 Days Late)
-    # Apply only to contracts that aren't already HIGH RISK
+    # We only apply this to contracts that aren't already HIGH RISK
     medium_risk_condition = (
         (df['Risk Score'] == 'LOW RISK') & (
             (df['Cost Overrun %'] > 0.05) |
@@ -64,13 +73,13 @@ def apply_risk_logic(df_contracts):
     )
     df.loc[medium_risk_condition, 'Risk Score'] = 'MEDIUM RISK'
 
-    return df
+    return df # Return the modified copy
 
 def determine_compliance_flag(row):
     """
     Helper function to determine compliance status for a single row.
     """
-    is_tm_violation = (row['Payment Schedule Type'] == 'T&M') and (row['Project Type'] == 'IT infrastructure')
+    is_tm_violation = (row['Payment Schedule Type'] == 'T&M') and (row['Project Type'] == 'IT Infrastructure')
     is_waiver_violation = (row['Mandatory Clause Waiver?'] == 'Yes')
 
     flags = []
@@ -80,24 +89,27 @@ def determine_compliance_flag(row):
         flags.append('Waiver Required')
 
     if flags:
+        # Join multiple flags with the pipe separator
         return 'FLAGGED: ' + ' | '.join(flags)
     return 'PASS'
 
 def apply_compliance_logic(df_contracts):
     """
-    Applies the proxy compliance flagging logic.
-    Creates a deep copy to prevent Streamlit/Pandas cache issues.
+    Applies the proxy compliance flagging logic using the robust helper function.
+    IMPORTANT: Creates a deep copy to prevent Streamlit/Pandas cache issues.
     """
+    # Create a deep copy to ensure modifications don't interfere with cached objects
     df = df_contracts.copy(deep=True) 
 
     # Apply the helper function row-by-row to calculate the Compliance Flag
     df['Compliance Flag'] = df.apply(determine_compliance_flag, axis=1)
     
-    return df
+    return df # Return the modified copy
 
 def aggregate_vendor_health(df_contracts, df_vendors):
     """
     Aggregates contract-level data up to the vendor level.
+    This mimics the Glide 'Relation & Rollup' columns.
     """
     # Count total contracts per vendor
     df_vendor_counts = df_contracts.groupby('Vendor ID').size().reset_index(name='Total Contracts')
@@ -120,7 +132,7 @@ def aggregate_vendor_health(df_contracts, df_vendors):
 
 # --- 3. Streamlit Application Layout ---
 
-def format_metric(value, prefix='$', suffix=''):
+def format_metric(value, prefix='Dh', suffix=''):
     """Helper for displaying metric changes with clean formatting."""
     if value >= 1_000_000:
         return f"{prefix}{value / 1_000_000:,.1f}M{suffix}"
@@ -131,17 +143,13 @@ def run_vendorsense_app():
     """Main function to run the Streamlit dashboard."""
     st.set_page_config(layout="wide", page_title="VendorSense Dashboard")
 
-    st.title("🛡️ VendorSense: Proactive Risk & Compliance Monitoring")
+    st.title("🛡️ VendorSense: strategic vendor risk management")
     st.markdown("A demonstration of Low-Code/No-Code logic translated to a Python Streamlit dashboard.")
     st.divider()
 
     # Load and process data
+    # The functions below ensure a deep copy, preventing the KeyError
     df_contracts, df_vendors = load_data()
-    
-    # Check if data loaded successfully before proceeding
-    if df_contracts.empty or df_vendors.empty:
-        return
-
     df_contracts = apply_risk_logic(df_contracts)
     df_contracts = apply_compliance_logic(df_contracts)
     df_health = aggregate_vendor_health(df_contracts, df_vendors)
@@ -157,9 +165,10 @@ def run_vendorsense_app():
     with col1:
         st.metric("Total Active Contracts", f"{total_contracts:,}")
     with col2:
+        # Adjusting the format_metric call for clarity on Portfolio Value
         st.metric("Portfolio Value", format_metric(total_value))
     with col3:
-        st.metric("High Risk Contracts", f"{high_risk_contracts:,}", delta=f"{high_risk_contracts / total_contracts * 100:.1f}% of total", delta_color="inverse")
+        st.metric("High Risk Contracts (Apex Metric)", f"{high_risk_contracts:,}", delta=f"{high_risk_contracts / total_contracts * 100:.1f}% of total", delta_color="inverse")
     with col4:
         st.metric("Compliance Flags Raised", f"{flagged_compliance:,}")
 
@@ -203,34 +212,7 @@ def run_vendorsense_app():
     # --- Operational View: Contracts Queue ---
     with tab_operational:
         st.header("Operational Contracts Queue")
-        
-        # --- NEW CHART: Delays (Line Graph) ---
-        st.subheader("Project Time Delays (Days Behind Schedule)")
-        st.markdown("This line chart visualizes the delay magnitude for all contracts that are currently running behind schedule.")
-
-        # Filter for contracts that are behind schedule (Days from Deadline > 0)
-        df_delays = df_contracts[df_contracts['Days from Deadline'] > 0].copy()
-
-        if not df_delays.empty:
-            # Sort by delay magnitude for better visual flow
-            df_delays = df_delays.sort_values(by='Days from Deadline', ascending=False)
-            
-            # Use Contract Name for the index and plot the delay
-            df_chart = df_delays[['Contract Name', 'Days from Deadline']]
-
-            st.line_chart(
-                df_chart.set_index('Contract Name')['Days from Deadline'],
-                color="#f97316", # Orange color for warning
-                use_container_width=True,
-                height=350
-            )
-            st.caption(f"Showing {len(df_delays)} contracts currently behind schedule.")
-        else:
-            st.success("🎉 All projects are currently on schedule or ahead of schedule!")
-        
-        st.divider()
         st.markdown("Filter to view contracts requiring immediate attention due to Risk or Compliance issues.")
-
 
         # Sidebar Filters
         st.sidebar.header("Operational Filters")
@@ -240,7 +222,7 @@ def run_vendorsense_app():
             default=['HIGH RISK', 'MEDIUM RISK']
         )
         # Ensure we only show flags, not PASS
-        compliance_options = [flag for flag in df_contracts['Compliance Flag'].unique() if flag.startswith('FLAGGED')]
+        compliance_options = [flag for flag in df_contracts['Compliance Flag'].unique() if flag != 'PASS']
         compliance_filter = st.sidebar.multiselect(
             "Filter by Compliance Flag",
             options=compliance_options,
@@ -249,6 +231,7 @@ def run_vendorsense_app():
 
         # Apply Filters
         df_filtered = df_contracts[df_contracts['Risk Score'].isin(risk_filter)]
+        # This line was where the first error occurred, now it should be safe
         df_filtered = df_filtered[df_filtered['Compliance Flag'].isin(compliance_filter)]
 
         st.info(f"Showing **{len(df_filtered)}** contracts matching the selected filters.")
@@ -259,7 +242,7 @@ def run_vendorsense_app():
                 'Contract ID', 'Contract Name', 'Vendor Name', 'Contract Value',
                 'Risk Score', 'Compliance Flag', 'Cost Overrun %', 'Days from Deadline'
             ]].style.map(
-                lambda x: 'background-color: #f84e4e' if x == 'HIGH RISK' else 'background-color: #fdaf78' if x == 'MEDIUM RISK' else '',
+                lambda x: 'background-color: #f84e4e' if x == 'HIGH RISK' else 'background-color: ##fdaf78' if x == 'MEDIUM RISK' else '',
                 subset=['Risk Score']
             ).format({
                 'Contract Value': '${:,.0f}',
@@ -269,6 +252,25 @@ def run_vendorsense_app():
             use_container_width=True,
             hide_index=True
         )
+
+        # --- LINE CHART FOR LATE CONTRACTS ---
+        st.subheader("Contracts Behind Schedule (Days Late)")
+
+        # 1. Filter for contracts that are behind schedule (Days from Deadline > 0)
+        df_late_contracts = df_contracts[df_contracts['Days from Deadline'] > 0].sort_values(
+            by='Days from Deadline', ascending=False
+        )
+
+        if not df_late_contracts.empty:
+            st.line_chart(
+                # Use Contract Name as the X-axis index
+                df_late_contracts.set_index('Contract Name')['Days from Deadline'],
+                color="#f97316", # Orange/Amber color for warning
+                height=300
+            )
+        else:
+            st.success("🎉 All contracts are currently on time or ahead of schedule!")
+        # --- END LINE CHART ---
 
 
 # Run the application
